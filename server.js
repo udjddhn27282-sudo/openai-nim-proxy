@@ -116,7 +116,10 @@ if (ENABLE_THINKING_MODE && nimModel.includes('deepseek')) {
       headers: {
         'Authorization': `Bearer ${NIM_API_KEY}`,
         'Content-Type': 'application/json'
-      },
+      }, // In the non-streaming response section (around line 119)
+console.log('Response choices:', JSON.stringify(response.data.choices, null, 2));
+console.log('Has reasoning_content?', response.data.choices[0]?.message?.reasoning_content);
+
       responseType: stream ? 'stream' : 'json'
     });
     
