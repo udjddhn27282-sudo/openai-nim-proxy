@@ -15,17 +15,17 @@ const NIM_API_BASE = process.env.NIM_API_BASE || 'https://integrate.api.nvidia.c
 const NIM_API_KEY = process.env.NIM_API_KEY;
 
 // 🔥 REASONING DISPLAY TOGGLE - Shows/hides reasoning in output
-const SHOW_REASONING = true;
+const SHOW_REASONING = true; // Set to true to show reasoning with <think> tags
 
 // 🔥 THINKING MODE TOGGLE - Enables thinking for specific models that support it
-const ENABLE_THINKING_MODE = true;
+const ENABLE_THINKING_MODE = true; // Set to true to enable chat_template_kwargs thinking parameter
 
 // Model mapping (adjust based on available NIM models)
 const MODEL_MAPPING = {
   'gpt-3.5-turbo': 'nvidia/llama-3.1-nemotron-ultra-253b-v1',
   'gpt-4': 'qwen/qwen3-coder-480b-a35b-instruct',
   'gpt-4-turbo': 'moonshotai/kimi-k2-instruct-0905',
-  'gpt-4o': 'deepseek-ai/deepseek-v3.2',
+  'gpt-4o': 'deepseek-ai/deepseek-v3.1',
   'claude-3-opus': 'openai/gpt-oss-120b',
   'claude-3-sonnet': 'openai/gpt-oss-20b',
   'gemini-pro': 'qwen/qwen3-next-80b-a3b-thinking' 
@@ -97,19 +97,9 @@ app.post('/v1/chat/completions', async (req, res) => {
       messages: messages,
       temperature: temperature || 0.7,
       max_tokens: max_tokens || 128000,
+      extra_body: ENABLE_THINKING_MODE ? { chat_template_kwargs: { thinking: true } } : undefined,
       stream: stream || false
     };
-
-    // Add thinking mode for DeepSeek models
-    if (ENABLE_THINKING_MODE && nimModel.includes('deepseek')) {
-      nimRequest.extra_body = {
-        chat_template_kwargs: {
-          enable_thinking: true
-        }
-      };
-    }
-    
-    console.log('🔍 Request to NVIDIA:', JSON.stringify(nimRequest, null, 2));
     
     // Make request to NVIDIA NIM API
     const response = await axios.post(`${NIM_API_BASE}/chat/completions`, nimRequest, {
@@ -119,15 +109,6 @@ app.post('/v1/chat/completions', async (req, res) => {
       },
       responseType: stream ? 'stream' : 'json'
     });
-    
-    // Debug logging for non-streaming responses
-    if (!stream) {
-      console.log('📦 Full Response:', JSON.stringify(response.data, null, 2));
-      console.log('💭 Has reasoning_content?', response.data.choices[0]?.message?.reasoning_content !== undefined);
-      if (response.data.choices[0]?.message) {
-        console.log('📝 Message keys:', Object.keys(response.data.choices[0].message));
-      }
-    }
     
     if (stream) {
       // Handle streaming response with reasoning
@@ -152,12 +133,6 @@ app.post('/v1/chat/completions', async (req, res) => {
             
             try {
               const data = JSON.parse(line.slice(6));
-              
-              // Debug log for streaming
-              if (data.choices?.[0]?.delta) {
-                console.log('🌊 Stream delta keys:', Object.keys(data.choices[0].delta));
-              }
-              
               if (data.choices?.[0]?.delta) {
                 const reasoning = data.choices[0].delta.reasoning_content;
                 const content = data.choices[0].delta.content;
@@ -239,10 +214,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
     
   } catch (error) {
-    console.error('❌ Proxy error:', error.message);
-    if (error.response?.data) {
-      console.error('❌ Error details:', JSON.stringify(error.response.data, null, 2));
-    }
+    console.error('Proxy error:', error.message);
     
     res.status(error.response?.status || 500).json({
       error: {
@@ -266,8 +238,8 @@ app.all('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 OpenAI to NVIDIA NIM Proxy running on port ${PORT}`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
-  console.log(`💭 Reasoning display: ${SHOW_REASONING ? 'ENABLED' : 'DISABLED'}`);
-  console.log(`🧠 Thinking mode: ${ENABLE_THINKING_MODE ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`OpenAI to NVIDIA NIM Proxy running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`Reasoning display: ${SHOW_REASONING ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`Thinking mode: ${ENABLE_THINKING_MODE ? 'ENABLED' : 'DISABLED'}`);
 });
