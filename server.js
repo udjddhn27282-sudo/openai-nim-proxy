@@ -20,7 +20,9 @@ const SHOW_REASONING = true; // Set to true to show reasoning with <think> tags
 // 🔥 THINKING MODE TOGGLE - Enables thinking for specific models that support it
 const ENABLE_THINKING_MODE = true; // Set to true to enable chat_template_kwargs thinking parameter
 
-"extra_body": { "chat_template_kwargs": { "thinking": true, "enable_thinking": true } }
+extra_body: ENABLE_THINKING_MODE
+  ? { chat_template_kwargs: { thinking: true, enable_thinking: true } }
+  : undefined,
 
 // Model mapping (adjust based on available NIM models)
 const MODEL_MAPPING = {
