@@ -15,11 +15,10 @@ const NIM_API_BASE = process.env.NIM_API_BASE || 'https://integrate.api.nvidia.c
 const NIM_API_KEY = process.env.NIM_API_KEY;
 
 // 🔥 REASONING DISPLAY TOGGLE - Shows/hides reasoning in output
-const SHOW_REASONING = true; // Set to true to show reasoning with <think> tags
+const SHOW_REASONING = true;
 
 // 🔥 THINKING MODE TOGGLE - Enables thinking for specific models that support it
-const ENABLE_THINKING_MODE = true; // Set to true to enable chat_template_kwargs thinking parameter
-
+const ENABLE_THINKING_MODE = true;
 
 // Model mapping (adjust based on available NIM models)
 const MODEL_MAPPING = {
@@ -98,30 +97,37 @@ app.post('/v1/chat/completions', async (req, res) => {
       messages: messages,
       temperature: temperature || 0.7,
       max_tokens: max_tokens || 128000,
-      extra_body: ENABLE_THINKING_MODE ? { chat_template_kwargs: { thinking: true } } : undefined,
       stream: stream || false
     };
 
-// Add thinking mode for models that support it (DeepSeek)
-if (ENABLE_THINKING_MODE && nimModel.includes('deepseek')) {
-  nimRequest.extra_body = {
-    chat_template_kwargs: {
-      enable_thinking: true
+    // Add thinking mode for DeepSeek models
+    if (ENABLE_THINKING_MODE && nimModel.includes('deepseek')) {
+      nimRequest.extra_body = {
+        chat_template_kwargs: {
+          enable_thinking: true
+        }
+      };
     }
-  };
-}
+    
+    console.log('🔍 Request to NVIDIA:', JSON.stringify(nimRequest, null, 2));
     
     // Make request to NVIDIA NIM API
     const response = await axios.post(`${NIM_API_BASE}/chat/completions`, nimRequest, {
       headers: {
         'Authorization': `Bearer ${NIM_API_KEY}`,
         'Content-Type': 'application/json'
-      }, // In the non-streaming response section (around line 119)
-console.log('Response choices:', JSON.stringify(response.data.choices, null, 2));
-console.log('Has reasoning_content?', response.data.choices[0]?.message?.reasoning_content);
-
+      },
       responseType: stream ? 'stream' : 'json'
     });
+    
+    // Debug logging for non-streaming responses
+    if (!stream) {
+      console.log('📦 Full Response:', JSON.stringify(response.data, null, 2));
+      console.log('💭 Has reasoning_content?', response.data.choices[0]?.message?.reasoning_content !== undefined);
+      if (response.data.choices[0]?.message) {
+        console.log('📝 Message keys:', Object.keys(response.data.choices[0].message));
+      }
+    }
     
     if (stream) {
       // Handle streaming response with reasoning
@@ -134,18 +140,24 @@ console.log('Has reasoning_content?', response.data.choices[0]?.message?.reasoni
       
       response.data.on('data', (chunk) => {
         buffer += chunk.toString();
-        const lines = buffer.split('\\n');
+        const lines = buffer.split('\n');
         buffer = lines.pop() || '';
         
         lines.forEach(line => {
           if (line.startsWith('data: ')) {
             if (line.includes('[DONE]')) {
-              res.write(line + '\\n');
+              res.write(line + '\n');
               return;
             }
             
             try {
               const data = JSON.parse(line.slice(6));
+              
+              // Debug log for streaming
+              if (data.choices?.[0]?.delta) {
+                console.log('🌊 Stream delta keys:', Object.keys(data.choices[0].delta));
+              }
+              
               if (data.choices?.[0]?.delta) {
                 const reasoning = data.choices[0].delta.reasoning_content;
                 const content = data.choices[0].delta.content;
@@ -154,14 +166,14 @@ console.log('Has reasoning_content?', response.data.choices[0]?.message?.reasoni
                   let combinedContent = '';
                   
                   if (reasoning && !reasoningStarted) {
-                    combinedContent = '<think>\\n' + reasoning;
+                    combinedContent = '<think>\n' + reasoning;
                     reasoningStarted = true;
                   } else if (reasoning) {
                     combinedContent = reasoning;
                   }
                   
                   if (content && reasoningStarted) {
-                    combinedContent += '</think>\\n\\n' + content;
+                    combinedContent += '</think>\n\n' + content;
                     reasoningStarted = false;
                   } else if (content) {
                     combinedContent += content;
@@ -180,9 +192,9 @@ console.log('Has reasoning_content?', response.data.choices[0]?.message?.reasoni
                   delete data.choices[0].delta.reasoning_content;
                 }
               }
-              res.write(`data: ${JSON.stringify(data)}\\n\\n`);
+              res.write(`data: ${JSON.stringify(data)}\n\n`);
             } catch (e) {
-              res.write(line + '\\n');
+              res.write(line + '\n');
             }
           }
         });
@@ -204,7 +216,7 @@ console.log('Has reasoning_content?', response.data.choices[0]?.message?.reasoni
           let fullContent = choice.message?.content || '';
           
           if (SHOW_REASONING && choice.message?.reasoning_content) {
-            fullContent = '<think>\\n' + choice.message.reasoning_content + '\\n</think>\\n\\n' + fullContent;
+            fullContent = '<think>\n' + choice.message.reasoning_content + '\n</think>\n\n' + fullContent;
           }
           
           return {
@@ -227,7 +239,10 @@ console.log('Has reasoning_content?', response.data.choices[0]?.message?.reasoni
     }
     
   } catch (error) {
-    console.error('Proxy error:', error.message);
+    console.error('❌ Proxy error:', error.message);
+    if (error.response?.data) {
+      console.error('❌ Error details:', JSON.stringify(error.response.data, null, 2));
+    }
     
     res.status(error.response?.status || 500).json({
       error: {
@@ -251,8 +266,8 @@ app.all('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`OpenAI to NVIDIA NIM Proxy running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Reasoning display: ${SHOW_REASONING ? 'ENABLED' : 'DISABLED'}`);
-  console.log(`Thinking mode: ${ENABLE_THINKING_MODE ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`🚀 OpenAI to NVIDIA NIM Proxy running on port ${PORT}`);
+  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+  console.log(`💭 Reasoning display: ${SHOW_REASONING ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`🧠 Thinking mode: ${ENABLE_THINKING_MODE ? 'ENABLED' : 'DISABLED'}`);
 });
